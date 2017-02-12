@@ -114,7 +114,7 @@ function screensaverctrl:get()
   local seconds = math.min(timeout, standby, suspend, off)
   local minutes = math.floor(seconds/60+0.5)
 
-  self.widget:set_text(string.format(" (%d) ", minutes))
+  self.widget:set_text(string.format("(%d)", minutes))
   return minutes
 end
 
