@@ -3,8 +3,7 @@
 -- Capture environment
 local awful = require("awful")
 local wibox = require("wibox")
-
-local timer = timer
+local gears = require("gears")
 
 local math = math
 local string = string
@@ -91,7 +90,7 @@ function screensaverctrl.new(args)
     awful.button({ }, 5, function() sw:down(sw.smallstep) end)
   ))
 
-  sw.timer = timer({ timeout = args.timeout or 3 })
+  sw.timer = gears.timer({ timeout = args.timeout or 3 })
   sw.timer:connect_signal("timeout", function() sw:get() end)
   sw.timer:start()
   sw:get()
