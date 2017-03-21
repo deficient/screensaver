@@ -13,11 +13,6 @@ local tostring = tostring
 local tonumber = tonumber
 local setmetatable = setmetatable
 
--- screensaverctrl.mmt: module (class) metatable
--- screensaverctrl.wmt: widget (instance) metatable
-local screensaverctrl = { mmt = {}, wmt = {} }
-screensaverctrl.wmt.__index = screensaverctrl
-
 
 ------------------------------------------
 -- Private utility functions
@@ -73,8 +68,10 @@ end
 -- Volume control interface
 ------------------------------------------
 
-function screensaverctrl.new(args)
-  local sw = setmetatable({}, screensaverctrl.wmt)
+local screensaverctrl = {}
+
+function screensaverctrl:new(args)
+  local sw = setmetatable({}, {__index = self})
 
   sw.step = args.step or 10
   sw.smallstep = args.smallstep or 1
@@ -164,8 +161,6 @@ function screensaverctrl:toggle()
   end
 end
 
-function screensaverctrl.mmt:__call(...)
-  return screensaverctrl.new(...)
-end
-
-return setmetatable(screensaverctrl, screensaverctrl.mmt)
+return setmetatable(screensaverctrl, {
+  __call = screensaverctrl.new,
+})
