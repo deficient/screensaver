@@ -71,28 +71,31 @@ end
 local screensaverctrl = {}
 
 function screensaverctrl:new(args)
-  local sw = setmetatable({}, {__index = self})
+  return setmetatable({}, {__index = self}):init(args)
+end
 
-  sw.step = args.step or 10
-  sw.smallstep = args.smallstep or 1
+function screensaverctrl:init(args)
 
-  sw.widget = wibox.widget.textbox()
-  sw.widget.set_align("right")
+  self.step = args.step or 10
+  self.smallstep = args.smallstep or 1
 
-  sw.widget:buttons(awful.util.table.join(
-    awful.button({ }, 1, function() sw:up(sw.step) end),
-    awful.button({ }, 3, function() sw:down(sw.step) end),
-    awful.button({ }, 2, function() sw:toggle() end),
-    awful.button({ }, 4, function() sw:up(sw.smallstep) end),
-    awful.button({ }, 5, function() sw:down(sw.smallstep) end)
+  self.widget = wibox.widget.textbox()
+  self.widget.set_align("right")
+
+  self.widget:buttons(awful.util.table.join(
+    awful.button({ }, 1, function() self:up(self.step) end),
+    awful.button({ }, 3, function() self:down(self.step) end),
+    awful.button({ }, 2, function() self:toggle() end),
+    awful.button({ }, 4, function() self:up(self.smallstep) end),
+    awful.button({ }, 5, function() self:down(self.smallstep) end)
   ))
 
-  sw.timer = gears.timer({ timeout = args.timeout or 3 })
-  sw.timer:connect_signal("timeout", function() sw:get() end)
-  sw.timer:start()
-  sw:get()
+  self.timer = gears.timer({ timeout = args.timeout or 3 })
+  self.timer:connect_signal("timeout", function() self:get() end)
+  self.timer:start()
+  self:get()
 
-  return sw
+  return self
 end
 
 function screensaverctrl:get()
