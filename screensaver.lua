@@ -47,18 +47,10 @@ end
 
 local function parse_sections(text)
   local result = {}
-  local section = nil
-  for line in text:gmatch('[^\n]+') do
-    local sec_name = line:match('^(%S.*):$')
-    if sec_name then
-      section = {}
-      result[sec_name:lower()] = section
-    else
-      table.insert(section, line)
-    end
-  end
-  for k, v in pairs(result) do
-    result[k] = table.concat(v, '\n')
+  local prefix = ""
+  for key, val, suffix in (text .. "\nX"):gmatch("([^\n]*):\n(.-)\n(%S)") do
+    result[(prefix .. key):lower()] = val
+    prefix = suffix
   end
   return result
 end
