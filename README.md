@@ -27,7 +27,7 @@ In your `~/.config/awesome/rc.lua`:
 
 ```lua
 -- load the module
-local screensaver = require("awesome-screensaver.screensaver")
+local screensaver = require("awesome-screensaver")
 
 
 -- instanciate the control
