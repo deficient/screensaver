@@ -5,6 +5,8 @@ local awful = require("awful")
 local wibox = require("wibox")
 local gears = require("gears")
 
+local timer = gears.timer
+
 local math = math
 local string = string
 local table = table
@@ -82,7 +84,7 @@ function screensaverctrl:init(args)
     awful.button({ }, 5, function() self:down(self.smallstep) end)
   ))
 
-  self.timer = gears.timer({ timeout = args.timeout or 3 })
+  self.timer = timer({ timeout = args.timeout or 3 })
   self.timer:connect_signal("timeout", function() self:get() end)
   self.timer:start()
   self:get()
