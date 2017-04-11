@@ -15,7 +15,7 @@ Drop the script into your awesome config folder. Suggestion:
 
 ```bash
 cd ~/.config/awesome
-git clone https://github.com/coldfix/awesome-screensaver.git
+git clone https://github.com/deficient/screensaver.git
 
 sudo pacman -S xorg-xset
 ```
@@ -27,7 +27,7 @@ In your `~/.config/awesome/rc.lua`:
 
 ```lua
 -- load the module
-local screensaver = require("awesome-screensaver")
+local screensaver = require("screensaver")
 
 
 -- instanciate the control
