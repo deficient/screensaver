@@ -142,7 +142,7 @@ end
 function screensaverctrl:set_seconds(sec)
   local val = tostring(sec)
   spawn_sequential(
-    {'xset', 's', val, val},
+    {'xset', 's', val},
     {'xset', 'dpms', val, val, val},
     function() self:update() end)
 end
