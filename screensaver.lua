@@ -9,43 +9,33 @@ local timer = gears.timer
 
 local math = math
 local string = string
-local table = table
-local io = io
 local tostring = tostring
 local tonumber = tonumber
 local setmetatable = setmetatable
+
+local exec = awful.spawn.easy_async
+
+
+------------------------------------------
+-- Compatibility with Lua <= 5.1
+------------------------------------------
+
+local _unpack = table.unpack or unpack
+
+-- same as table.pack in lua 5.2:
+local function pack(...)
+    return {n = select('#', ...), ...}
+end
+
+-- different from table.unpack in lua.5.2:
+local function unpack(t)
+    return _unpack(t, 1, t.n)
+end
 
 
 ------------------------------------------
 -- Private utility functions
 ------------------------------------------
-
-local function readcommand(command)
-  local file = io.popen(command)
-  local text = file:read('*all')
-  file:close()
-  return text
-end
-
-local function quote_arg(str)
-  return "'" .. string.gsub(str, "'", "'\\''") .. "'"
-end
-
-local function quote_args(first, ...)
-  if #{...} == 0 then
-    return quote_arg(first)
-  else
-    return quote_arg(first), quote_args(...)
-  end
-end
-
-local function make_argv(...)
-  return table.concat({quote_args(...)}, " ")
-end
-
-local function exec(...)
-  return readcommand(make_argv(...))
-end
 
 local function parse_sections(text)
   local result = {}
@@ -55,6 +45,24 @@ local function parse_sections(text)
     prefix = suffix
   end
   return result
+end
+
+local function spawn_sequential(...)
+  if select('#', ...) > 0 then
+    local command = select(1, ...)
+    local args = pack(select(2, ...))
+    local exec_tail = function()
+      spawn_sequential(unpack(args))
+    end
+    if type(command) == "function" then
+      command()
+      exec_tail()
+    elseif command == nil then
+      exec_tail()
+    else
+      exec(command, exec_tail)
+    end
+  end
 end
 
 
@@ -70,6 +78,7 @@ end
 
 function screensaverctrl:init(args)
 
+  self.unit = args.unit or 60
   self.step = args.step or 10
   self.smallstep = args.smallstep or 1
 
@@ -85,77 +94,117 @@ function screensaverctrl:init(args)
   ))
 
   self.timer = timer({ timeout = args.timeout or 3 })
-  self.timer:connect_signal("timeout", function() self:get() end)
+  self.timer:connect_signal("timeout", function() self:update() end)
   self.timer:start()
-  self:get()
+  self:update()
 
   return self
 end
 
-function screensaverctrl:get()
-  local output = exec('xset', 'q')
-  local parsed = parse_sections(output)
+function screensaverctrl:update()
+  self:get(function(value)
+    self:set_text(value)
+  end)
+end
 
+function screensaverctrl:set_text(value)
+  self.widget:set_text(string.format("(%d)", value))
+end
+
+function screensaverctrl:get(callback)
+  self:get_seconds(function(seconds)
+    callback(math.floor(seconds / self.unit + 0.5))
+  end)
+end
+
+function screensaverctrl:get_seconds(callback)
+  exec({'xset', 'q'}, function(output)
+    callback(self:parse_status(output))
+  end)
+end
+
+function screensaverctrl:parse_status(output)
+  local parsed = parse_sections(output)
   local scrs = parsed['screen saver']
   local dpms = parsed['dpms (energy star)']
-
   local timeout = tonumber(scrs:match('timeout:%s+(%d+)'))
   local standby = tonumber(dpms:match('Standby:%s+(%d+)'))
   local suspend = tonumber(dpms:match('Suspend:%s+(%d+)'))
   local off     = tonumber(dpms:match(    'Off:%s+(%d+)'))
-
   local seconds = math.min(timeout, standby, suspend, off)
-  local minutes = math.floor(seconds/60+0.5)
-
-  self.widget:set_text(string.format("(%d)", minutes))
-  return minutes
+  return seconds
 end
 
-function screensaverctrl:set(minutes)
-  local sec = minutes*60
+function screensaverctrl:set(value)
+  self:set_seconds(value * self.unit)
+end
+
+function screensaverctrl:set_seconds(sec)
   local val = tostring(sec)
-  exec('xset', 's', val, val)
-  exec('xset', 'dpms', val, val, val)
-  self:get()
+  spawn_sequential(
+    {'xset', 's', val, val},
+    {'xset', 'dpms', val, val, val},
+    function() self:update() end)
 end
 
-function screensaverctrl:enable()
-  exec('xset', '+dpms')
-  exec('xset', 's', 'on')
-  if self:get() == 0 then
-    self:set(self.step)
-  end
+function screensaverctrl:enable(finally)
+  finally = finally or function() self:ensure_on() end
+  spawn_sequential(
+    {'xset', '+dpms'},
+    {'xset', 's', 'on'},
+    finally)
 end
 
-function screensaverctrl:disable()
-  exec('xset', '-dpms')
-  exec('xset', 's', 'off')
-  self:get()
+function screensaverctrl:disable(finally)
+  finally = finally or function() self:update() end
+  spawn_sequential(
+    {'xset', '-dpms'},
+    {'xset', 's', 'off'},
+    finally)
+end
+
+function screensaverctrl:ensure_on()
+  self:get(function(value)
+    if value == 0 then
+      self:set(self.step)
+    else
+      self:set_text(value)
+    end
+  end)
 end
 
 function screensaverctrl:up(step)
-  cur = self:get()
-  if cur == 0 then
-    self:enable()
-  end
-  self:set(cur + step)
+  self:get(function(value)
+    if value == 0 then
+      self:enable(function()
+        self:set(step)
+      end)
+    else
+      self:set(value + step)
+    end
+  end)
 end
 
 function screensaverctrl:down(step)
-  cur = self:get()
-  if cur < step then
-    cur = step
-    self:disable()
-  end
-  self:set(cur - step)
+  self:get(function(value)
+    if value <= step then
+      self:disable(function()
+        self:set(0)
+      end)
+    else
+      self:set(value - step)
+    end
+  end)
 end
 
 function screensaverctrl:toggle()
-  if self:get() > 0 then
-    self:disable()
-  else
-    self:enable()
-  end
+  self:get(function(value)
+    if value > 0 then
+      self:disable()
+    else
+      self:enable()
+    end
+  end)
 end
 
 return setmetatable(screensaverctrl, {
