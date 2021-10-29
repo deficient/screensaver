@@ -70,17 +70,24 @@ end
 -- Volume control interface
 ------------------------------------------
 
-local screensaverctrl = {}
+local backends = {}
+local screensaverctrl = { backends = backends }
 
 function screensaverctrl:new(args)
   return setmetatable({}, {__index = self}):init(args)
 end
 
 function screensaverctrl:init(args)
-
   self.unit = args.unit or 60
   self.step = args.step or 10
   self.smallstep = args.smallstep or 1
+
+  if type(args.backend) == "string" then
+    self.backend = self.backends[args.backend]
+  else
+    self.backend = args.backend
+  end
+  self.backend = self.backend or self.backends.xset_dpms
 
   self.widget = wibox.widget.textbox()
   self.widget.set_align("right")
@@ -112,55 +119,21 @@ function screensaverctrl:set_text(value)
 end
 
 function screensaverctrl:get(callback)
-  self:get_seconds(function(seconds)
+  self.backend:get(function(seconds)
     callback(math.floor(seconds / self.unit + 0.5))
   end)
 end
 
-function screensaverctrl:get_seconds(callback)
-  exec({'xset', 'q'}, function(output)
-    callback(self:parse_status(output))
-  end)
-end
-
-function screensaverctrl:parse_status(output)
-  local parsed = parse_sections(output)
-  local scrs = parsed['screen saver']
-  local dpms = parsed['dpms (energy star)']
-  local timeout = tonumber(scrs:match('timeout:%s+(%d+)'))
-  local standby = tonumber(dpms:match('Standby:%s+(%d+)'))
-  local suspend = tonumber(dpms:match('Suspend:%s+(%d+)'))
-  local off     = tonumber(dpms:match(    'Off:%s+(%d+)'))
-  local seconds = math.min(timeout, standby, suspend, off)
-  return seconds
-end
-
 function screensaverctrl:set(value)
-  self:set_seconds(value * self.unit)
+  self.backend:set(value * self.unit, function() self:update() end)
 end
 
-function screensaverctrl:set_seconds(sec)
-  local val = tostring(sec)
-  spawn_sequential(
-    {'xset', 's', val},
-    {'xset', 'dpms', val, val, val},
-    function() self:update() end)
+function screensaverctrl:enable(callback)
+  self.backend:enable(callback or function() self:ensure_on() end)
 end
 
-function screensaverctrl:enable(finally)
-  finally = finally or function() self:ensure_on() end
-  spawn_sequential(
-    {'xset', '+dpms'},
-    {'xset', 's', 'on'},
-    finally)
-end
-
-function screensaverctrl:disable(finally)
-  finally = finally or function() self:update() end
-  spawn_sequential(
-    {'xset', '-dpms'},
-    {'xset', 's', 'off'},
-    finally)
+function screensaverctrl:disable(callback)
+  self.backend:disable(callback or function() self:update() end)
 end
 
 function screensaverctrl:ensure_on()
@@ -206,6 +179,107 @@ function screensaverctrl:toggle()
     end
   end)
 end
+
+
+------------------------------------------
+-- Backends
+------------------------------------------
+
+local function xset_get(self, callback)
+  exec({'xset', 'q'}, function(output)
+    callback(self:parse_result(parse_sections(output)))
+  end)
+end
+
+backends.xset_s = {
+  get = xset_get,
+
+  set = function(self, val, callback)
+    exec({'xset', 's', tostring(val)}, callback)
+  end,
+
+  enable = function(self, callback)
+    exec({'xset', 's', 'on'}, callback)
+  end,
+
+  disable = function(self, callback)
+    exec({'xset', 's', 'off'}, callback)
+  end,
+
+  parse_result = function(self, sections)
+    local section = sections['screen saver']
+    local timeout = tonumber(section:match('timeout:%s+(%d+)'))
+    return timeout
+  end,
+}
+
+backends.xset_dpms = {
+  get = xset_get,
+
+  set = function(self, val, callback)
+    val = tostring(val)
+    exec({'xset', 'dpms', val, val, val}, callback)
+  end,
+
+  enable = function(self, callback)
+    exec({'xset', '+dpms'}, callback)
+  end,
+
+  disable = function(self, callback)
+    exec({'xset', '-dpms'}, callback)
+  end,
+
+  parse_result = function(self, sections)
+    local dpms = sections['dpms (energy star)']
+    local standby = tonumber(dpms:match('Standby:%s+(%d+)'))
+    local suspend = tonumber(dpms:match('Suspend:%s+(%d+)'))
+    local off     = tonumber(dpms:match(    'Off:%s+(%d+)'))
+    local state   = dpms:match("DPMS is (%w+)")
+    if state == "Disabled" then
+      return 0
+    else
+      local seconds = math.min(standby, suspend, off)
+      return seconds
+    end
+  end,
+}
+
+backends.xset = {
+  get = xset_get,
+
+  set = function(self, val, callback)
+    val = tostring(val)
+    spawn_sequential(
+      {'xset', 's', val},
+      {'xset', 'dpms', val, val, val},
+      callback)
+  end,
+
+  enable = function(self, callback)
+    spawn_sequential(
+      {'xset', '+dpms'},
+      {'xset', 's', 'on'},
+      callback)
+  end,
+
+  disable = function(self, callback)
+    spawn_sequential(
+      {'xset', '-dpms'},
+      {'xset', 's', 'off'},
+      callback)
+  end,
+
+  parse_result = function(self, sections)
+    local value_scrs = backends.xset_s:parse_result(sections)
+    local value_dpms = backends.xset_dpms:parse_result(sections)
+    if value_scrs == 0 or value_dpms == 0 then
+      return math.max(value_scrs, value_dpms)
+    else
+      return math.min(value_scrs, value_dpms)
+    end
+  end,
+}
+
 
 return setmetatable(screensaverctrl, {
   __call = screensaverctrl.new,
