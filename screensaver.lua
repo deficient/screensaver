@@ -65,6 +65,18 @@ local function spawn_sequential(...)
   end
 end
 
+local function safe_min(a, b)
+  if b == nil then
+    return a
+  elseif a == nil then
+    return b
+  elseif a <= b then
+    return a
+  else
+    return b
+  end
+end
+
 
 ------------------------------------------
 -- Volume control interface
@@ -238,8 +250,8 @@ backends.xset_dpms = {
     if state == "Disabled" then
       return 0
     else
-      local seconds = math.min(standby, suspend, off)
-      return seconds
+      local seconds = safe_min(safe_min(standby, suspend), off)
+      return seconds or 0
     end
   end,
 }
