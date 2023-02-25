@@ -41,6 +41,10 @@ local function parse_sections(text)
   local result = {}
   local prefix = ""
   for key, val, suffix in (text .. "\nX"):gmatch("([^\n]*):\n(.-)\n(%S)") do
+    -- Normalize to "DPMS":
+    --    - "DPMS (Energy Star)" or
+    --    - "DPMS (Display Power Management Signaling)"
+    key = key:gsub('%s*%(.*%)$', '')
     result[(prefix .. key):lower()] = val
     prefix = suffix
   end
@@ -242,7 +246,7 @@ backends.xset_dpms = {
   end,
 
   parse_result = function(self, sections)
-    local dpms = sections['dpms (energy star)']
+    local dpms = sections['dpms']
     local standby = tonumber(dpms:match('Standby:%s+(%d+)'))
     local suspend = tonumber(dpms:match('Suspend:%s+(%d+)'))
     local off     = tonumber(dpms:match(    'Off:%s+(%d+)'))
