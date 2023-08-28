@@ -106,7 +106,6 @@ function screensaverctrl:init(args)
   self.backend = self.backend or self.backends.xset_dpms
 
   self.widget = wibox.widget.textbox()
-  self.widget.set_align("right")
 
   self.widget:buttons(awful.util.table.join(
     awful.button({ }, 1, function() self:up(self.step) end),
